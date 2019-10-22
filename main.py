@@ -1,26 +1,47 @@
 # -*- coding: utf-8 -*-
 
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+import os
 from json import loads, dumps
+
+import sqlalchemy as sql
+from flask import Flask, request, jsonify, g
+from flask_cors import CORS
+
 import database
 import models as m
-from sqlalchemy import func
 
-import sqlalchemy
+static_file_dir = os.path.join(
+	os.path.dirname(
+		os.path.realpath(__file__)
+	), 'static'
+)
 
 app = Flask(__name__)
 CORS(app)
 
-database.init_db()
+@app.before_request
+def set_db_session():
+    """
+    create session before each request
+    """
+    g.s = database.db_session()
 
 @app.teardown_appcontext
 def shutdown_session(exception=None):
-	database.db_session.remove()
+	if g.s:
+		if exception:
+			g.s.rollback()
+		g.s.remove()
 
-@app.route('/')
+
+
+@app.route('*')
 def hello_world():
 	return 'Dent App USAC'
+
+@app.route('/init/db')
+def init_db():
+	database.init_db()
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -40,7 +61,7 @@ def login():
 def get_injuries():
 	injuries = [
 		injury.as_dict() 
-		for injury in database.db_session().query(m.Injury).all()[:5]
+		for injury in g.s.query(m.Injury).all()[:5]
 	]
 
 	return jsonify(injuries)
@@ -93,12 +114,12 @@ def filter_injury(type, filter):
 	print(type)
 	print(filter)
 
-	query = database.db_session()
+	query = g.s
 
 	location_sub = (
 		query.query(
 			m.InjuryLocation.location, 
-			func.count(m.InjuryLocation.location)
+			sql.func.count(m.InjuryLocation.location)
 		)
 		.join(
 			m.Injury,
